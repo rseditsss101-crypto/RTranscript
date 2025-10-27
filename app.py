@@ -6,35 +6,30 @@ import shutil
 
 def transcribe_video_to_text(video_path, output_txt_path):
     try:
-        # Skip transcription if output already exists
         if os.path.exists(output_txt_path):
             return f"Skipped (already transcribed): {video_path}"
 
-        # Run Whisper transcription
         command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
-        subprocess.run(command, check=True)
+        result = subprocess.run(command, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            return f"Whisper failed with error: {result.stderr}"
 
         base_name = os.path.splitext(os.path.basename(video_path))[0]
         whisper_output_dir = os.path.join(os.path.dirname(video_path), base_name)
 
-        # Check if Whisper output directory exists
         if os.path.isdir(whisper_output_dir):
-            # Find txt files in the output directory
             txt_files = [f for f in os.listdir(whisper_output_dir) if f.endswith('.txt')]
             if txt_files:
-                transcript_file_path = os.path.join(whisper_output_dir, txt_files[0])
-                # Move transcript to desired output path
-                os.rename(transcript_file_path, output_txt_path)
-                # Remove the Whisper output directory
+                os.rename(os.path.join(whisper_output_dir, txt_files[0]), output_txt_path)
                 shutil.rmtree(whisper_output_dir)
                 return f"Transcription saved to {output_txt_path}"
             else:
-                return f"No transcription txt file found in the Whisper output folder {whisper_output_dir}"
+                return f"No .txt file found in {whisper_output_dir}"
         else:
             return f"Whisper output folder {whisper_output_dir} not found."
-
-    except subprocess.CalledProcessError as e:
-        return f"Error in transcription: {e}"
+    except Exception as e:
+        return f"Error during transcription: {e}"
 
 st.title('Video Transcription App')
 
