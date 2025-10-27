@@ -1,25 +1,30 @@
 import streamlit as st
 import os
 import subprocess
+import glob
 
 def transcribe_video_to_text(video_path, output_txt_path):
     try:
         # Skip if transcript already exists
         if os.path.exists(output_txt_path):
             return f"Skipped (already transcribed): {video_path}"
-        
-        # Use Whisper to transcribe
+
+        # Run Whisper to transcribe the video
         command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
         subprocess.run(command, check=True)
 
         base_name = os.path.splitext(os.path.basename(video_path))[0]
-        transcribed_file = base_name + ".txt"
 
-        if os.path.exists(transcribed_file):
-            os.rename(transcribed_file, output_txt_path)
+        # Search for the transcript txt file matching the base name (handles special characters)
+        possible_files = glob.glob(f"{base_name}*.txt")
+
+        if possible_files:
+            # Move the transcript file to the desired output path
+            os.rename(possible_files[0], output_txt_path)
             return f"Transcription saved to {output_txt_path}"
         else:
             return f"Transcription file not found after running Whisper for {video_path}"
+
     except subprocess.CalledProcessError as e:
         return f"Error in transcription: {e}"
 
