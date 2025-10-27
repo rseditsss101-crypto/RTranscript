@@ -7,45 +7,49 @@ import time
 
 def transcribe_video_to_text(video_path, output_txt_path):
     try:
-        # Skip if transcript already exists
         if os.path.exists(output_txt_path):
             return f"Skipped (already transcribed): {video_path}"
 
-        # Run Whisper transcription
+        # Log files before running Whisper
+        st.text("Before Whisper runs, directory contents:\n" + str(os.listdir(os.path.dirname(video_path))))
+
         command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
         result = subprocess.run(command, capture_output=True, text=True)
 
-        # Log Whisper stdout & stderr for debugging
+        # Log Whisper output info
         st.text("Whisper stdout:\n" + result.stdout)
         st.text("Whisper stderr:\n" + result.stderr)
 
         if result.returncode != 0:
             return f"Whisper failed with error code {result.returncode}: {result.stderr}"
 
+        # Log files after running Whisper
+        st.text("After Whisper runs, directory contents:\n" + str(os.listdir(os.path.dirname(video_path))))
+
         base_name = os.path.splitext(os.path.basename(video_path))[0]
         whisper_output_dir = os.path.join(os.path.dirname(video_path), base_name)
 
-        # Wait for the folder to appear
+        # Wait up to 5 seconds for output folder to appear
         for _ in range(5):
             if os.path.isdir(whisper_output_dir):
                 break
             time.sleep(1)
 
         if not os.path.isdir(whisper_output_dir):
-            return f"Whisper output folder {whisper_output_dir} not found after waiting."
+            return f"Whisper output folder {whisper_output_dir} not found after waiting.\nCurrent directory: {os.listdir()}\nUploads folder: {os.listdir(os.path.dirname(video_path))}"
 
-        # List files for debugging
-        files_in_dir = os.listdir(whisper_output_dir)
-        st.text(f"Files in whisper output folder: {files_in_dir}")
+        # Log output folder contents
+        files_in_output = os.listdir(whisper_output_dir)
+        st.text(f"Files inside Whisper output folder: {files_in_output}")
 
-        txt_files = [f for f in files_in_dir if f.endswith('.txt')]
+        txt_files = [f for f in files_in_output if f.endswith('.txt')]
         if txt_files:
             transcript_file = os.path.join(whisper_output_dir, txt_files[0])
             os.rename(transcript_file, output_txt_path)
             shutil.rmtree(whisper_output_dir)
             return f"Transcription saved to {output_txt_path}"
         else:
-            return f"No transcript `.txt` found in {whisper_output_dir}"
+            return f"No transcription .txt file found in {whisper_output_dir}"
 
     except Exception as e:
         return f"Error during transcription: {e}"
