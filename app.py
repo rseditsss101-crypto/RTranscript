@@ -2,28 +2,36 @@ import streamlit as st
 import os
 import subprocess
 import glob
+import shutil
 
 def transcribe_video_to_text(video_path, output_txt_path):
     try:
-        # Skip if transcript already exists
+        # Skip transcription if output already exists
         if os.path.exists(output_txt_path):
             return f"Skipped (already transcribed): {video_path}"
 
-        # Run Whisper to transcribe the video
+        # Run Whisper transcription
         command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
         subprocess.run(command, check=True)
 
         base_name = os.path.splitext(os.path.basename(video_path))[0]
+        whisper_output_dir = os.path.join(os.path.dirname(video_path), base_name)
 
-        # Search for the transcript txt file matching the base name (handles special characters)
-        possible_files = glob.glob(f"{base_name}*.txt")
-
-        if possible_files:
-            # Move the transcript file to the desired output path
-            os.rename(possible_files[0], output_txt_path)
-            return f"Transcription saved to {output_txt_path}"
+        # Check if Whisper output directory exists
+        if os.path.isdir(whisper_output_dir):
+            # Find txt files in the output directory
+            txt_files = [f for f in os.listdir(whisper_output_dir) if f.endswith('.txt')]
+            if txt_files:
+                transcript_file_path = os.path.join(whisper_output_dir, txt_files[0])
+                # Move transcript to desired output path
+                os.rename(transcript_file_path, output_txt_path)
+                # Remove the Whisper output directory
+                shutil.rmtree(whisper_output_dir)
+                return f"Transcription saved to {output_txt_path}"
+            else:
+                return f"No transcription txt file found in the Whisper output folder {whisper_output_dir}"
         else:
-            return f"Transcription file not found after running Whisper for {video_path}"
+            return f"Whisper output folder {whisper_output_dir} not found."
 
     except subprocess.CalledProcessError as e:
         return f"Error in transcription: {e}"
@@ -35,6 +43,7 @@ uploaded_file = st.file_uploader("Upload a video file", type=["mp4", "mkv", "avi
 if uploaded_file:
     videos_folder = "uploads"
     transcripts_folder = "transcripts"
+
     os.makedirs(videos_folder, exist_ok=True)
     os.makedirs(transcripts_folder, exist_ok=True)
 
