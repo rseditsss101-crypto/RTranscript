@@ -3,68 +3,49 @@ import os
 import subprocess
 import shutil
 import time
+import re
+
+def remove_timestamps(text):
+    # Simple regex to remove timestamps like [00:00.000 --> 00:01.160]
+    return re.sub(r"\[[0-9:.]+ --> [0-9:.]+\]\s*", "", text)
 
 def transcribe_video_to_text(video_path, output_txt_path):
-    try:
-        if os.path.exists(output_txt_path):
-            return f"Skipped (already transcribed): {video_path}"
+    if os.path.exists(output_txt_path):
+        return None  # Already transcribed, return nothing to avoid duplication
 
-        # Log files before transcription
-        st.text("Before Whisper runs, directory contents:\n" + str(os.listdir(os.path.dirname(video_path))))
+    command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
+    result = subprocess.run(command, capture_output=True, text=True)
 
-        command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
-        result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        st.error(f"Whisper failed: {result.stderr}")
+        return None
 
-        # Log Whisper outputs
-        st.text("Whisper stdout:\n" + result.stdout)
-        st.text("Whisper stderr:\n" + result.stderr)
+    base_name = os.path.splitext(os.path.basename(video_path))[0]
+    upload_dir = os.path.dirname(video_path)
+    whisper_output_dir = os.path.join(upload_dir, base_name)
 
-        if result.returncode != 0:
-            return f"Whisper failed with error code {result.returncode}: {result.stderr}"
-
-        base_name = os.path.splitext(os.path.basename(video_path))[0]
-        upload_dir = os.path.dirname(video_path)
-        whisper_output_dir = os.path.join(upload_dir, base_name)
-
-        # Wait for output folder or file to appear
-        for _ in range(5):
-            # Check if output folder exists and has transcript
-            if os.path.isdir(whisper_output_dir):
-                txt_files = [f for f in os.listdir(whisper_output_dir) if f.endswith('.txt')]
-                if txt_files:
-                    transcript_file = os.path.join(whisper_output_dir, txt_files[0])
-                    os.rename(transcript_file, output_txt_path)
-                    shutil.rmtree(whisper_output_dir)
-                    return f"Transcription saved to {output_txt_path}"
-            # Check for transcript file directly in current directory
-            elif os.path.isfile(base_name + ".txt"):
-                os.rename(base_name + ".txt", output_txt_path)
-                return f"Transcription saved to {output_txt_path}"
-
-            time.sleep(1)
-
-        # Final debug logs if neither found
+    # Wait for output folder or direct file
+    for _ in range(5):
         if os.path.isdir(whisper_output_dir):
-            files_in_dir = os.listdir(whisper_output_dir)
-            st.text(f"Files inside whisper output folder: {files_in_dir}")
+            txt_files = [f for f in os.listdir(whisper_output_dir) if f.endswith('.txt')]
+            if txt_files:
+                transcript_file = os.path.join(whisper_output_dir, txt_files[0])
+                shutil.move(transcript_file, output_txt_path)
+                shutil.rmtree(whisper_output_dir)
+                return output_txt_path
+        elif os.path.isfile(base_name + ".txt"):
+            shutil.move(base_name + ".txt", output_txt_path)
+            return output_txt_path
+        time.sleep(1)
+    return None
 
-        if os.path.isfile(base_name + ".txt"):
-            st.text(f"Found transcript file {base_name}.txt in current directory")
-
-        return (f"Whisper output folder {whisper_output_dir} not found and file {base_name}.txt not present "
-                "after waiting.")
-
-    except Exception as e:
-        return f"Error during transcription: {e}"
-
-st.title('Video Transcription App')
+st.title("Simple Video Transcription")
 
 uploaded_file = st.file_uploader("Upload a video file", type=["mp4", "mkv", "avi", "mov"])
 
 if uploaded_file:
     videos_folder = "uploads"
     transcripts_folder = "transcripts"
-
     os.makedirs(videos_folder, exist_ok=True)
     os.makedirs(transcripts_folder, exist_ok=True)
 
@@ -72,13 +53,23 @@ if uploaded_file:
     with open(video_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    output_txt_path = os.path.join(transcripts_folder, os.path.splitext(uploaded_file.name)[0] + ".txt")
-    st.text("Transcribing...")
-    result = transcribe_video_to_text(video_path, output_txt_path)
-    st.text(result)
+    transcript_path = os.path.join(transcripts_folder, os.path.splitext(uploaded_file.name)[0] + ".txt")
+    transcribed_file = transcribe_video_to_text(video_path, transcript_path)
 
-    if os.path.exists(output_txt_path):
-        with open(output_txt_path, "r", encoding="utf-8") as f:
-            transcript = f.read()
-        st.subheader("Transcript:")
-        st.text_area("", transcript, height=300)
+    if transcribed_file and os.path.exists(transcribed_file):
+        with open(transcribed_file, "r", encoding="utf-8") as f:
+            full_transcript = f.read()
+
+        st.subheader("Transcript with Timestamps")
+        st.text_area("", full_transcript, height=300)
+
+        st.subheader("Transcript without Timestamps")
+        text_only = remove_timestamps(full_transcript)
+        st.text_area("", text_only, height=300)
+
+        # Download buttons
+        st.download_button("Download with timestamps", full_transcript, file_name=f"{os.path.splitext(uploaded_file.name)[0]}_with_timestamps.txt")
+
+        st.download_button("Download without timestamps", text_only, file_name=f"{os.path.splitext(uploaded_file.name)[0]}_plain.txt")
+    else:
+        st.write("Transcription in progress or failed. Please try again.")
