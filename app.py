@@ -6,25 +6,24 @@ import time
 import re
 
 def remove_timestamps(text):
-    # Simple regex to remove timestamps like [00:00.000 --> 00:01.160]
+    # Remove timestamps in format [00:00.000 --> 00:01.160]
     return re.sub(r"\[[0-9:.]+ --> [0-9:.]+\]\s*", "", text)
 
 def transcribe_video_to_text(video_path, output_txt_path):
     if os.path.exists(output_txt_path):
-        return None  # Already transcribed, return nothing to avoid duplication
+        return None  # Skip if already transcribed
 
     command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
     result = subprocess.run(command, capture_output=True, text=True)
 
     if result.returncode != 0:
-        st.error(f"Whisper failed: {result.stderr}")
+        st.error(f"Whisper process failed: {result.stderr}")
         return None
 
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     upload_dir = os.path.dirname(video_path)
     whisper_output_dir = os.path.join(upload_dir, base_name)
 
-    # Wait for output folder or direct file
     for _ in range(5):
         if os.path.isdir(whisper_output_dir):
             txt_files = [f for f in os.listdir(whisper_output_dir) if f.endswith('.txt')]
@@ -41,7 +40,7 @@ def transcribe_video_to_text(video_path, output_txt_path):
 
 st.title("Simple Video Transcription")
 
-uploaded_file = st.file_uploader("Upload a video file", type=["mp4", "mkv", "avi", "mov"])
+uploaded_file = st.file_uploader("Upload a video file (mp4, mkv, avi, mov)", type=["mp4", "mkv", "avi", "mov"])
 
 if uploaded_file:
     videos_folder = "uploads"
@@ -61,15 +60,21 @@ if uploaded_file:
             full_transcript = f.read()
 
         st.subheader("Transcript with Timestamps")
-        st.text_area("", full_transcript, height=300)
+        st.text_area("", full_transcript, height=300, key="transcript_with_timestamps")
 
         st.subheader("Transcript without Timestamps")
         text_only = remove_timestamps(full_transcript)
-        st.text_area("", text_only, height=300)
+        st.text_area("", text_only, height=300, key="transcript_without_timestamps")
 
-        # Download buttons
-        st.download_button("Download with timestamps", full_transcript, file_name=f"{os.path.splitext(uploaded_file.name)[0]}_with_timestamps.txt")
-
-        st.download_button("Download without timestamps", text_only, file_name=f"{os.path.splitext(uploaded_file.name)[0]}_plain.txt")
+        st.download_button(
+            "Download with timestamps",
+            full_transcript,
+            file_name=f"{os.path.splitext(uploaded_file.name)[0]}_with_timestamps.txt",
+        )
+        st.download_button(
+            "Download without timestamps",
+            text_only,
+            file_name=f"{os.path.splitext(uploaded_file.name)[0]}_plain.txt",
+        )
     else:
-        st.write("Transcription in progress or failed. Please try again.")
+        st.info("Transcription in progress or failed. Please try again.")
