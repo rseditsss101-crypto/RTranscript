@@ -8,12 +8,16 @@ def transcribe_video_to_text(video_path, output_txt_path):
     try:
         if os.path.exists(output_txt_path):
             return f"Skipped (already transcribed): {video_path}"
-
+        
         command = ["whisper", video_path, "--model", "base", "--output_format", "txt"]
         result = subprocess.run(command, capture_output=True, text=True)
 
+        # Log Whisper stdout and stderr for debugging
+        st.text("Whisper stdout:\n" + result.stdout)
+        st.text("Whisper stderr:\n" + result.stderr)
+
         if result.returncode != 0:
-            return f"Whisper failed with error: {result.stderr}"
+            return f"Whisper failed with error code {result.returncode}: {result.stderr}"
 
         base_name = os.path.splitext(os.path.basename(video_path))[0]
         whisper_output_dir = os.path.join(os.path.dirname(video_path), base_name)
@@ -21,13 +25,15 @@ def transcribe_video_to_text(video_path, output_txt_path):
         if os.path.isdir(whisper_output_dir):
             txt_files = [f for f in os.listdir(whisper_output_dir) if f.endswith('.txt')]
             if txt_files:
-                os.rename(os.path.join(whisper_output_dir, txt_files[0]), output_txt_path)
+                transcript_file_path = os.path.join(whisper_output_dir, txt_files[0])
+                os.rename(transcript_file_path, output_txt_path)
                 shutil.rmtree(whisper_output_dir)
                 return f"Transcription saved to {output_txt_path}"
             else:
-                return f"No .txt file found in {whisper_output_dir}"
+                return f"No transcription txt file found in the Whisper output folder {whisper_output_dir}"
         else:
             return f"Whisper output folder {whisper_output_dir} not found."
+
     except Exception as e:
         return f"Error during transcription: {e}"
 
